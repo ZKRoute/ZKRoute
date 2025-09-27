@@ -30,21 +30,26 @@ export function mockEncrypt(value: Utxo): string {
 
 /**
  * Calculates the hash of ext data using Borsh serialization
- * @param extData External data object containing recipient, amount, encrypted outputs, fee, and mint address
+ * @param extData External data object containing recipient, amount, encrypted outputs, fee, fee recipient, and mint address
  * @returns The hash as a Uint8Array (32 bytes)
  */
 export function getExtDataHash(extData: {
   recipient: string | PublicKey;
   extAmount: string | number | BN;
-  encryptedOutput1: string | Uint8Array;
-  encryptedOutput2: string | Uint8Array;
+  encryptedOutput1?: string | Uint8Array;  // Optional for Account Data Separation
+  encryptedOutput2?: string | Uint8Array;  // Optional for Account Data Separation
   fee: string | number | BN;
+  feeRecipient: string | PublicKey;
   mintAddress: string | PublicKey;
 }): Uint8Array {
   // Convert all inputs to their appropriate types
   const recipient = extData.recipient instanceof PublicKey 
     ? extData.recipient 
     : new PublicKey(extData.recipient);
+  
+  const feeRecipient = extData.feeRecipient instanceof PublicKey 
+    ? extData.feeRecipient 
+    : new PublicKey(extData.feeRecipient);
   
   const mintAddress = extData.mintAddress instanceof PublicKey 
     ? extData.mintAddress 
@@ -54,12 +59,15 @@ export function getExtDataHash(extData: {
   const extAmount = new BN(extData.extAmount.toString());
   const fee = new BN(extData.fee.toString());
   
-  // Always convert to Buffer
-  const encryptedOutput1 = Buffer.from(extData.encryptedOutput1 as any);
-  const encryptedOutput2 = Buffer.from(extData.encryptedOutput2 as any);
+  // Handle encrypted outputs - they might not be present in Account Data Separation approach
+  const encryptedOutput1 = extData.encryptedOutput1 
+    ? Buffer.from(extData.encryptedOutput1 as any)
+    : Buffer.alloc(0); // Empty buffer if not provided
+  const encryptedOutput2 = extData.encryptedOutput2 
+    ? Buffer.from(extData.encryptedOutput2 as any)
+    : Buffer.alloc(0); // Empty buffer if not provided
 
   // Define the borsh schema matching the Rust struct
-  // SECURITY: Including mintAddress creates cryptographic binding between proof and token type
   const schema = {
     struct: {
       recipient: { array: { type: 'u8', len: 32 } },
@@ -67,6 +75,7 @@ export function getExtDataHash(extData: {
       encryptedOutput1: { array: { type: 'u8' } },
       encryptedOutput2: { array: { type: 'u8' } },
       fee: 'u64',
+      feeRecipient: { array: { type: 'u8', len: 32 } },
       mintAddress: { array: { type: 'u8', len: 32 } },
     }
   };
@@ -77,6 +86,7 @@ export function getExtDataHash(extData: {
     encryptedOutput1: encryptedOutput1,
     encryptedOutput2: encryptedOutput2,
     fee: fee,  // BN instance - Borsh handles it correctly with u64 type
+    feeRecipient: feeRecipient.toBytes(),
     mintAddress: mintAddress.toBytes(),
   };
   
